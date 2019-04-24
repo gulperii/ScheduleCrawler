@@ -1,4 +1,4 @@
-#TODO: nbsp ne????? yok et ?????
+# TODO: nbsp ne????? yok et ?????
 
 
 import urllib.request
@@ -47,18 +47,52 @@ depAndAbbr = [('ASIAN STUDIES', 'ASIA'), ('ASIAN STUDIES WITH THESIS', 'ASIA'),
 def constructDates(arg):
     if (arg.split('-')[1] == 'Fall'):
         term = 1
+        year = int(arg.split('-')[0])
+        year2 = year + 1
     elif (arg.split('-')[1] == 'Summer'):
         term = 3
+        year = int(arg.split('-')[0]) -1
+        year2 = year + 1
     else:
         term = 2
-    year = int(arg.split('-')[0])
-    year2 = year + 1
+        year = int(arg.split('-')[0]) - 1
+        year2 = year + 1
+
     return str(year) + "/" + str(year2) + "-" + str(term)
 
 
 endDate = constructDates(endArg)
 beginDate = constructDates(beginArg)
+dates=[]
 
+def constructDateInterval(beginDate, endDate):
+    dates.append(beginDate)
+    beginTerm = int(beginDate.split('-')[1])
+    beginYear = int(beginDate.split('/')[0])
+    date = beginDate
+    while(date != endDate):
+        if(beginTerm !=3):
+             date = str(beginYear) + "/" + str(beginYear + 1) + "-" + str(beginTerm+1)
+             dates.append(date)
+             beginTerm+=1
+
+        else:
+            beginTerm =1
+            beginYear = beginYear+1
+            date = str(beginYear) + "/" + str(beginYear+1) + "-" + str(beginTerm)
+            dates.append(date)
+
+
+constructDateInterval(beginDate,endDate)
+
+columns = ['Dept./Prog.(name)','Course Code','Course Name']
+for date in dates:
+    columns.append(date)
+
+columns.append('Total Offerings')
+
+df = pd.DataFrame(columns=columns)
+print(len(depAndAbbr))
 
 def constructUrls(date, deptAbbr):
     deptName, abbr = deptAbbr
@@ -66,16 +100,16 @@ def constructUrls(date, deptAbbr):
     return mainUrl + date + "&kisaadi=" + abbr + "&bolum=" + deptName
 
 
+for date in dates:
+    for deptAbbrPair in depAndAbbr:
+        request = urllib.request.Request(constructUrls(date, deptAbbrPair), headers=hdr)
+        response = urllib.request.urlopen(request)
+        soupObj = BeautifulSoup(response.read(), features="html.parser")
+
+        for item in soupObj.findAll('tr', {'class': ['schtd','schtd2']}):
+            courseCode = item.findAll('td')[0].text
+            courseName = item.findAll('td')[2].text
+            courseInstructor = item.findAll('td')[5].text
+            print(courseCode, courseName, courseInstructor)
 
 
-for deptAbbrPair in depAndAbbr:
-
-    request = urllib.request.Request(constructUrls(beginDate,deptAbbrPair), headers=hdr)
-    response = urllib.request.urlopen(request)
-    soupObj = BeautifulSoup(response.read(), features="html.parser")
-
-    for item in soupObj.findAll('tr', {'class': 'schtd'}):
-        courseCode = item.findAll('td')[0].text
-        courseName = item.findAll('td')[2].text
-        courseInstructor = item.findAll('td')[5].text
-        print(courseCode + courseName + courseInstructor)
