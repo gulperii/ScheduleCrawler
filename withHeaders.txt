@@ -1,0 +1,14 @@
+https://registration.boun.edu.tr/scripts/sch.asp?donem=2018/2019-2&kisaadi=ATA&bolum=ATATURK+INSTITUTE+FOR+MODERN+TURKISH+HISTORY
+https://registration.boun.edu.tr/scripts/sch.asp?donem=2018/2019-2&kisaadi=CET&bolum=COMPUTER+EDUCATION+%26+EDUCATIONAL+TECHNOLOGY
+
+for deptAbbrPair in depAndAbbr:
+
+    request = urllib.request.Request(constructUrls(beginDate,deptAbbrPair), headers=hdr)
+    response = urllib.request.urlopen(request)
+    soupObj = BeautifulSoup(response.read(), features="html.parser")
+
+    for item in soupObj.findAll('tr', {'class': 'schtd'}):
+        courseCode = item.findAll('td')[0].text
+        courseName = item.findAll('td')[2].text
+        courseInstructor = item.findAll('td')[5].text
+        print(courseCode + courseName + courseInstructor)
