@@ -43,6 +43,7 @@ depAndAbbr = [('ASIAN STUDIES', 'ASIA'), ('ASIAN STUDIES WITH THESIS', 'ASIA'),
               ('TRANSLATION AND INTERPRETING STUDIES', 'TR'), ('TURKISH COURSES COORDINATOR', 'TK'),
               ('TURKISH LANGUAGE & LITERATURE', 'TKL'), ('WESTERN LANGUAGES & LITERATURES', 'LL')]
 
+courseList = dict(depAndAbbr)
 
 def constructDates(arg):
     if (arg.split('-')[1] == 'Fall'):
@@ -51,7 +52,7 @@ def constructDates(arg):
         year2 = year + 1
     elif (arg.split('-')[1] == 'Summer'):
         term = 3
-        year = int(arg.split('-')[0]) -1
+        year = int(arg.split('-')[0]) - 1
         year2 = year + 1
     else:
         term = 2
@@ -63,36 +64,35 @@ def constructDates(arg):
 
 endDate = constructDates(endArg)
 beginDate = constructDates(beginArg)
-dates=[]
+dates = []
+
 
 def constructDateInterval(beginDate, endDate):
     dates.append(beginDate)
     beginTerm = int(beginDate.split('-')[1])
     beginYear = int(beginDate.split('/')[0])
     date = beginDate
-    while(date != endDate):
-        if(beginTerm !=3):
-             date = str(beginYear) + "/" + str(beginYear + 1) + "-" + str(beginTerm+1)
-             dates.append(date)
-             beginTerm+=1
+    while (date != endDate):
+        if (beginTerm != 3):
+            date = str(beginYear) + "/" + str(beginYear + 1) + "-" + str(beginTerm + 1)
+            dates.append(date)
+            beginTerm += 1
 
         else:
-            beginTerm =1
-            beginYear = beginYear+1
-            date = str(beginYear) + "/" + str(beginYear+1) + "-" + str(beginTerm)
+            beginTerm = 1
+            beginYear = beginYear + 1
+            date = str(beginYear) + "/" + str(beginYear + 1) + "-" + str(beginTerm)
             dates.append(date)
 
 
-constructDateInterval(beginDate,endDate)
+constructDateInterval(beginDate, endDate)
 
-columns = ['Dept./Prog.(name)','Course Code','Course Name']
+columns = ['Dept./Prog.(name)', 'Course Code', 'Course Name']
 for date in dates:
     columns.append(date)
 
 columns.append('Total Offerings')
 
-df = pd.DataFrame(columns=columns)
-print(len(depAndAbbr))
 
 def constructUrls(date, deptAbbr):
     deptName, abbr = deptAbbr
@@ -100,16 +100,37 @@ def constructUrls(date, deptAbbr):
     return mainUrl + date + "&kisaadi=" + abbr + "&bolum=" + deptName
 
 
-for date in dates:
+# for one dept and one term
+def oneTermOneDept(deptAbbrPair):
+    dept, abbr = deptAbbrPair
+    request = urllib.request.Request(constructUrls(date, deptAbbrPair), headers=hdr)
+    response = urllib.request.urlopen(request)
+    soupObj = BeautifulSoup(response.read(), features="html.parser")
+    termCourseList = []
+    termInstructorSet = set()
+    termCourseSet = set()
+    deptAllCourseInfo = []
+    for item in soupObj.findAll('tr', {'class': ['schtd', 'schtd2']}):
+        courseCode = item.findAll('td')[0].text.split('.')[0]
+        courseName = item.findAll('td')[2].text
+        courseInstructor = item.findAll('td')[5].text
+
+        termCourseList.append((courseCode, courseName))
+        termInstructorSet.add(courseInstructor)
+        termCourseSet.add(courseName)
+        deptAllCourseInfo.append(courseCode,courseName,)
+    oneTermOneDeptPackage = [abbr, dept, termCourseList, termCourseSet, termInstructorSet]
+    return oneTermOneDeptPackage
+
+
+# all departments
+def oneTermAllDept(date):
     for deptAbbrPair in depAndAbbr:
-        request = urllib.request.Request(constructUrls(date, deptAbbrPair), headers=hdr)
-        response = urllib.request.urlopen(request)
-        soupObj = BeautifulSoup(response.read(), features="html.parser")
-
-        for item in soupObj.findAll('tr', {'class': ['schtd','schtd2']}):
-            courseCode = item.findAll('td')[0].text
-            courseName = item.findAll('td')[2].text
-            courseInstructor = item.findAll('td')[5].text
-            print(courseCode, courseName, courseInstructor)
+        oneTermOneDept(deptAbbrPair)
 
 
+for date in dates:
+    oneTermAllDept(date)
+
+df = pd.DataFrame(columns=columns)
+df.append()
