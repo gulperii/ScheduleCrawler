@@ -1,11 +1,11 @@
 # TODO: nbsp ne????? yok et ?????
-
-
+# TODO: deal with staff
 import urllib.request
 import sys
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
+import csv
 
 beginArg = sys.argv[1]
 endArg = sys.argv[2]
@@ -43,7 +43,6 @@ depAndAbbr = [('ASIAN STUDIES', 'ASIA'), ('ASIAN STUDIES WITH THESIS', 'ASIA'),
               ('TRANSLATION AND INTERPRETING STUDIES', 'TR'), ('TURKISH COURSES COORDINATOR', 'TK'),
               ('TURKISH LANGUAGE & LITERATURE', 'TKL'), ('WESTERN LANGUAGES & LITERATURES', 'LL')]
 
-courseList = dict(depAndAbbr)
 
 def constructDates(arg):
     if (arg.split('-')[1] == 'Fall'):
@@ -100,37 +99,74 @@ def constructUrls(date, deptAbbr):
     return mainUrl + date + "&kisaadi=" + abbr + "&bolum=" + deptName
 
 
-# for one dept and one term
-def oneTermOneDept(deptAbbrPair):
-    dept, abbr = deptAbbrPair
-    request = urllib.request.Request(constructUrls(date, deptAbbrPair), headers=hdr)
-    response = urllib.request.urlopen(request)
-    soupObj = BeautifulSoup(response.read(), features="html.parser")
-    termCourseList = []
-    termInstructorSet = set()
-    termCourseSet = set()
-    deptAllCourseInfo = []
-    for item in soupObj.findAll('tr', {'class': ['schtd', 'schtd2']}):
-        courseCode = item.findAll('td')[0].text.split('.')[0]
-        courseName = item.findAll('td')[2].text
-        courseInstructor = item.findAll('td')[5].text
-
-        termCourseList.append((courseCode, courseName))
-        termInstructorSet.add(courseInstructor)
-        termCourseSet.add(courseName)
-        deptAllCourseInfo.append(courseCode,courseName,)
-    oneTermOneDeptPackage = [abbr, dept, termCourseList, termCourseSet, termInstructorSet]
-    return oneTermOneDeptPackage
+class Department:
+    allCourseSet = set()
+    allInstructorSet = set()
+    departmentName = ""
+    departmentAbbr = ""
+    totalCourseDiv = [0, 0]
+    firstRow=[" "]*len(columns)
 
 
-# all departments
-def oneTermAllDept(date):
-    for deptAbbrPair in depAndAbbr:
-        oneTermOneDept(deptAbbrPair)
+    def __init__(self, deptPairAbbr, dates):
+        name, abbr = deptPairAbbr
+        self.departmentName = name
+        self.departmentAbbr = abbr
+        self.classesByTerm = {term: {} for term in dates}
+
+    def firstRowInfo(self):
+        self.firstRow[0] = self.departmentAbbr + " (" + self.departmentName + ")"
+        self.firstRow[1] = [self.totalCourseDiv[0]+ " "+ self.totalCourseDiv[1]]
+
+        courses =self.classesByTerm.keys()
 
 
-for date in dates:
-    oneTermAllDept(date)
 
-df = pd.DataFrame(columns=columns)
-df.append()
+
+deptObjList = []
+
+for pair in depAndAbbr:
+    deptObjList.append(Department(pair, dates))
+
+for deptAbbrPair in depAndAbbr:
+    index = 0
+    for date in dates:
+        # for specifc date
+        request = urllib.request.Request(constructUrls(date, deptAbbrPair), headers=hdr)
+        response = urllib.request.urlopen(request)
+        soupObj = BeautifulSoup(response.read(), features="html.parser")
+        classesDict = {}
+        for item in soupObj.findAll('tr', {'class': ['schtd', 'schtd2']}):
+            # for course
+            courseCode = item.findAll('td')[0].text.split('.')[0].replace(u'\xa0', u'')
+            courseName = item.findAll('td')[2].text.replace(u'\xa0', u'')
+            try:
+                courseCode[-3]
+            except:
+                continue
+
+            courseInstructor = item.findAll('td')[5].text.replace(u'\xa0', u'')
+            deptObjList[index].allCourseSet.add((courseCode, courseName))
+            deptObjList[index].allInstructorSet.add(courseInstructor)
+            try:
+                if int(courseCode[-3]) >= 5:
+                    deptObjList[index].totalCourseDiv[1] += 1
+                else:
+                    deptObjList[index].totalCourseDiv[0] += 1
+            except:
+                deptObjList[index].totalCourseDiv[0] += 1
+
+            if courseName in classesDict:
+                classesDict[courseName].append(courseInstructor)
+            else:
+                classesDict[courseName] = [courseInstructor]
+        deptObjList[index].classesByTerm[date] = classesDict
+
+    index += 1
+
+print(deptObjList[0])
+
+with open('mycsv.csv', 'w', newline=' ') as f:
+    theWriter = csv.DictWriter(f, fieldnames=columns)
+    theWriter.writeheader()
+    for dept in deptObjList:
