@@ -2,6 +2,7 @@
 # TODO: deal with staff
 import urllib.request
 import sys
+import collections
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
@@ -11,37 +12,7 @@ beginArg = sys.argv[1]
 endArg = sys.argv[2]
 mainUrl = "https://registration.boun.edu.tr/scripts/sch.asp?donem="
 hdr = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'}
-depAndAbbr = [('ASIAN STUDIES', 'ASIA'), ('ASIAN STUDIES WITH THESIS', 'ASIA'),
-              ('ATATURK INSTITUTE FOR MODERN TURKISH HISTORY', 'ATA'), ('AUTOMOTIVE ENGINEERING', 'AUTO'),
-              ('BIOMEDICAL ENGINEERING', 'BM'), ('BUSINESS INFORMATION SYSTEMS', 'BIS'),
-              ('CHEMICAL ENGINEERING', 'CHE'), ('CHEMISTRY', 'CHEM'), ('CIVIL ENGINEERING', 'CE'),
-              ('COGNITIVE SCIENCE', 'COGS'), ('COMPUTATIONAL SCIENCE & ENGINEERING', 'CSE'),
-              ('COMPUTER EDUCATION & EDUCATIONAL TECHNOLOGY', 'CET'), ('COMPUTER ENGINEERING', 'CMPE'),
-              ('CONFERENCE INTERPRETING', 'INT'),
-              ('CONSTRUCTION ENGINEERING AND MANAGEMENT', 'CEM'), ('CRITICAL AND CULTURAL STUDIES', 'CCS'),
-              ('EARTHQUAKE ENGINEERING', 'EQE'), ('ECONOMICS', 'EC'), ('ECONOMICS AND FINANCE', 'EF'),
-              ('EDUCATIONAL SCIENCES', 'ED'), ('EDUCATIONAL TECHNOLOGY', 'CET'),
-              ('ELECTRICAL & ELECTRONICS ENGINEERING', 'EE'), ('ENGINEERING AND TECHNOLOGY MANAGEMENT', 'ETM'),
-              ('ENVIRONMENTAL SCIENCES', 'ENV'), ('ENVIRONMENTAL TECHNOLOGY', 'ENVT'), ('EXECUTIVE MBA', 'XMBA'),
-              ('FINANCIAL ENGINEERING', 'FE'), ('FINE ARTS', 'PA'), ('FOREIGN LANGUAGE EDUCATION', 'FLED'),
-              ('GEODESY', 'GED'), ('GEOPHYSICS', 'GPH'), ('GUIDANCE & PSYCHOLOGICAL COUNSELING', 'GUID'),
-              ('HISTORY', 'HIST'), ('HUMANITIES COURSES COORDINATOR', 'HUM'), ('INDUSTRIAL ENGINEERING', 'IE'),
-              ('INTERNATIONAL COMPETITION AND TRADE', 'INCT'),
-              ('INTERNATIONAL RELATIONS:TURKEY,EUROPE AND THE MIDDLE EAST', 'MIR'),
-              ('INTERNATIONAL RELATIONS:TURKEY,EUROPE AND THE MIDDLE EAST WITH THESIS', 'MIR'),
-              ('INTERNATIONAL TRADE', 'INTT'), ('INTERNATIONAL TRADE MANAGEMENT', 'INTT'), ('LEARNING SCIENCES', 'LS'),
-              ('LINGUISTICS', 'LING'),
-              ('MANAGEMENT', 'AD'), ('MANAGEMENT INFORMATION SYSTEMS', 'MIS'), ('MATHEMATICS', 'MATH'),
-              ('MATHEMATICS AND SCIENCE EDUCATION', 'SCED'), ('MECHANICAL ENGINEERING', 'ME'),
-              ('MECHATRONICS ENGINEERING', 'MECA'), ('MOLECULAR BIOLOGY & GENETICS', 'BIO'), ('PHILOSOPHY', 'PHIL'),
-              ('PHYSICAL EDUCATION', 'PE'), ('PHYSICS', 'PHYS'), ('POLITICAL SCIENCE&INTERNATIONAL RELATIONS', 'POLS'),
-              ('PRIMARY EDUCATION', 'PRED'), ('PSYCHOLOGY', 'PSY'), ('SCHOOL OF FOREIGN LANGUAGES', 'YADYOK'),
-              ('SECONDARY SCHOOL SCIENCE AND MATHEMATICS EDUCATION', 'SCED'),
-              ('SOCIAL POLICY WITH THESIS', 'SPL'), ('SOCIOLOGY', 'SOC'), ('SOFTWARE ENGINEERING', 'SWE'),
-              ('SOFTWARE ENGINEERING WITH THESIS', 'SWE'), ('SUSTAINABLE TOURISM MANAGEMENT', 'TRM'),
-              ('SYSTEMS & CONTROL ENGINEERING', 'SCO'), ('TOURISM ADMINISTRATION', 'TRM'), ('TRANSLATION', 'WTR'),
-              ('TRANSLATION AND INTERPRETING STUDIES', 'TR'), ('TURKISH COURSES COORDINATOR', 'TK'),
-              ('TURKISH LANGUAGE & LITERATURE', 'TKL'), ('WESTERN LANGUAGES & LITERATURES', 'LL')]
+depAndAbbr = [('WESTERN LANGUAGES & LITERATURES', 'LL')]
 
 
 def constructDates(arg):
@@ -105,22 +76,29 @@ class Department:
     departmentName = ""
     departmentAbbr = ""
     totalCourseDiv = [0, 0]
-    firstRow=[" "]*len(columns)
-
+    firstRow = [0] * len(columns)
+    totOffU = 0
+    totOffG = 0
 
     def __init__(self, deptPairAbbr, dates):
         name, abbr = deptPairAbbr
         self.departmentName = name
         self.departmentAbbr = abbr
-        self.classesByTerm = {term: {} for term in dates}
+        self.classesByTerm = {term: collections.OrderedDict() for term in dates}
 
     def firstRowInfo(self):
         self.firstRow[0] = self.departmentAbbr + " (" + self.departmentName + ")"
-        self.firstRow[1] = [self.totalCourseDiv[0]+ " "+ self.totalCourseDiv[1]]
+        self.firstRow[1] = "U" + str(self.totalCourseDiv[0]) + " G" + str(self.totalCourseDiv[1])
+        a = 3
+        for date in dates:
 
-        courses =self.classesByTerm.keys()
-
-
+            self.totOffU += self.classesByTerm[date]["courseDiv"][0]
+            self.totOffG += self.classesByTerm[date]["courseDiv"][1]
+            self.firstRow[a] = "U" + str(self.classesByTerm[date]["courseDiv"][0]) + " G" + str(
+                self.classesByTerm[date]["courseDiv"][1]) + " I" + str(self.classesByTerm[date]["uniqueIns"])
+            a += 1
+        self.firstRow[-1] = "U" + str(self.totOffU) + " G" + str(self.totOffG) + " I" + str(len(self.allInstructorSet))
+        return self.firstRow
 
 
 deptObjList = []
@@ -135,7 +113,9 @@ for deptAbbrPair in depAndAbbr:
         request = urllib.request.Request(constructUrls(date, deptAbbrPair), headers=hdr)
         response = urllib.request.urlopen(request)
         soupObj = BeautifulSoup(response.read(), features="html.parser")
-        classesDict = {}
+        classesDict = collections.OrderedDict()
+        underGrad = [0, 0]
+        uniqueIns = set()
         for item in soupObj.findAll('tr', {'class': ['schtd', 'schtd2']}):
             # for course
             courseCode = item.findAll('td')[0].text.split('.')[0].replace(u'\xa0', u'')
@@ -148,25 +128,30 @@ for deptAbbrPair in depAndAbbr:
             courseInstructor = item.findAll('td')[5].text.replace(u'\xa0', u'')
             deptObjList[index].allCourseSet.add((courseCode, courseName))
             deptObjList[index].allInstructorSet.add(courseInstructor)
+            uniqueIns.add(courseInstructor)
             try:
                 if int(courseCode[-3]) >= 5:
                     deptObjList[index].totalCourseDiv[1] += 1
+                    underGrad[1] += 1
                 else:
                     deptObjList[index].totalCourseDiv[0] += 1
+                    underGrad[0] += 1
             except:
                 deptObjList[index].totalCourseDiv[0] += 1
+                underGrad[0] += 1
 
             if courseName in classesDict:
                 classesDict[courseName].append(courseInstructor)
             else:
                 classesDict[courseName] = [courseInstructor]
+        classesDict["courseDiv"] = underGrad
+        classesDict["uniqueIns"] = len(uniqueIns)
         deptObjList[index].classesByTerm[date] = classesDict
 
     index += 1
 
-print(deptObjList[0])
-
-with open('mycsv.csv', 'w', newline=' ') as f:
-    theWriter = csv.DictWriter(f, fieldnames=columns)
-    theWriter.writeheader()
+with open('mycsv.csv', 'w') as f:
+    theWriter = csv.writer(f)
+    theWriter.writerow(columns)
     for dept in deptObjList:
+        theWriter.writerow(dept.firstRowInfo())
