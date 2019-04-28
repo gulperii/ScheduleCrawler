@@ -1,3 +1,6 @@
+#Ezgi Gülperi ER
+#2017400075
+
 import sys
 import collections
 from bs4 import BeautifulSoup
@@ -271,33 +274,33 @@ for deptAbbrPair in depAndAbbr:
     # to iterate thorough the department list.
     index += 1
 
-with open('mycsv.csv', 'w') as f:
-    # Writes to stdout in csv format, seperator character is semicolon
-    theWriter = csv.writer(f, delimiter=";",lineterminator='\n')
-    # First write the header
-    theWriter.writerow(columns)
 
-    for i in range(len(deptObjList)):
-        # For every department we first write the statistics.
-        theWriter.writerow(deptObjList[i].firstRowInfo())
-        # We sort our course list and write course-specific stats row by row.
-        uniqueCourseList = list(deptObjList[i].allCourseSet)
-        uniqueCourseList.sort()
-        for course in uniqueCourseList:
-            code, name = course
-            row = [" ", code, name]
-            howManyTerms = 0
-            howManyInst = set()
-            for date in dates:
-                # As allCourseSet has all courses for all terms, we should check whether the course was offered in this term.
-                # If it is, we put a "x" and also add the instructors of the course for that term to the more general set- which contains all instructors
-                # that has given that course.
-                if (code,name) in deptObjList[i].classesByTerm[date]["uniqueClasses"]:
-                    howManyInst = howManyInst.union(set(deptObjList[i].classesByTerm[date][(code,name)]))
-                    row.append("x")
-                    howManyTerms += 1
-                else:
-                    row.append(" ")
+# Writes to stdout in csv format, seperator character is semicolon
+theWriter = csv.writer(sys.stdout, delimiter=";",lineterminator='\n')
+# First write the header
+theWriter.writerow(columns)
 
-            row.append(str(howManyTerms) + "/" + str(len(howManyInst)))
-            theWriter.writerow(row)
+for i in range(len(deptObjList)):
+    # For every department we first write the statistics.
+    theWriter.writerow(deptObjList[i].firstRowInfo())
+    # We sort our course list and write course-specific stats row by row.
+    uniqueCourseList = list(deptObjList[i].allCourseSet)
+    uniqueCourseList.sort()
+    for course in uniqueCourseList:
+        code, name = course
+        row = [" ", code, name]
+        howManyTerms = 0
+        howManyInst = set()
+        for date in dates:
+            # As allCourseSet has all courses for all terms, we should check whether the course was offered in this term.
+            # If it is, we put a "x" and also add the instructors of the course for that term to the more general set- which contains all instructors
+            # that has given that course.
+            if (code,name) in deptObjList[i].classesByTerm[date]["uniqueClasses"]:
+                howManyInst = howManyInst.union(set(deptObjList[i].classesByTerm[date][(code,name)]))
+                row.append("x")
+                howManyTerms += 1
+            else:
+                row.append(" ")
+
+        row.append(str(howManyTerms) + "/" + str(len(howManyInst)))
+        theWriter.writerow(row)
