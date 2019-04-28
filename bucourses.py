@@ -1,9 +1,8 @@
-# TODO: timout
-import urllib.request
 import sys
 import collections
 from bs4 import BeautifulSoup
 import csv
+import requests
 
 # arguments
 beginArg = sys.argv[1]
@@ -38,7 +37,7 @@ depAndAbbr = [('MANAGEMENT', 'AD'), ('ASIAN STUDIES', 'ASIA'), ('ASIAN STUDIES W
               ('INTERNATIONAL RELATIONS:TURKEY,EUROPE AND THE MIDDLE EAST WITH THESIS', 'MIR'),
               ('MANAGEMENT INFORMATION SYSTEMS', 'MIS'), ('FINE ARTS', 'PA'), ('PHYSICAL EDUCATION', 'PE'),
               ('PHILOSOPHY', 'PHIL'), ('PHYSICS', 'PHYS'), ('POLITICAL SCIENCE&INTERNATIONAL RELATIONS', 'POLS'),
-              ('PRIMARY EDUCATION', 'PRED'), ('PSYCHOLOGY', 'PSY'),
+              ('PRIMARY EDUCATION', 'PRED'), ('PSYCHOLOGY', 'PSY'), ('MATHEMATICS AND SCIENCE EDUCATION', 'SCED'),
               ('SECONDARY SCHOOL SCIENCE AND MATHEMATICS EDUCATION', 'SCED'),
               ('SYSTEMS & CONTROL ENGINEERING', 'SCO'), ('SOCIOLOGY', 'SOC'), ('SOCIAL POLICY WITH THESIS', 'SPL'),
               ('SOFTWARE ENGINEERING', 'SWE'),
@@ -46,7 +45,7 @@ depAndAbbr = [('MANAGEMENT', 'AD'), ('ASIAN STUDIES', 'ASIA'), ('ASIAN STUDIES W
               ('TURKISH LANGUAGE & LITERATURE', 'TKL'), ('TRANSLATION AND INTERPRETING STUDIES', 'TR'),
               ('TOURISM ADMINISTRATION', 'TRM'),
               ('SUSTAINABLE TOURISM MANAGEMENT', 'TRM'), ('TRANSLATION', 'WTR'), ('EXECUTIVE MBA', 'XMBA'),
-              ('SCHOOL OF FOREIGN LANGUAGES', 'YADYOK'), ('MATHEMATICS AND SCIENCE EDUCATION', 'SCED')]
+              ('SCHOOL OF FOREIGN LANGUAGES', 'YADYOK')]
 
 
 # To transform the argument dates (eg: 2018-Fall) to Url-form (2018/2019-1)
@@ -68,10 +67,10 @@ def constructDates(arg):
 
 
 def deconstructDates(date):
-    if (date.split("-")[1] == 1):
+    if (date.split("-")[1] == "1"):
         return str(date.split("/")[0]) + "-" + "Fall"
     else:
-        if (date.split("-")[1] == 2):
+        if (date.split("-")[1] == "2"):
             return str(date.split("/")[1].split("-")[0]) + "-" + "Spring"
         else:
             return str(date.split("/")[1].split("-")[0]) + "-" + "Summer"
@@ -181,11 +180,13 @@ index = 0
 for deptAbbrPair in depAndAbbr:
     for date in dates:
         # Make a web request with the url we have constructed tailored to the department and the term
-        #Used headers to prevent website from blocking us
-        request = urllib.request.Request(constructUrls(date, deptAbbrPair), headers=hdr)
-        response = urllib.request.urlopen(request)
-        rawHtml = response.read()
-        soupObj = BeautifulSoup(rawHtml, features="html.parser")
+        # Used headers to prevent website from blocking us
+
+        try:
+            request = requests.get(constructUrls(date, deptAbbrPair), headers=hdr, timeout=75)
+        except requests.exceptions.Timeout:
+            print("Timeout occured")
+        soupObj = BeautifulSoup(request.content, features="html.parser")
         # An OrderedDict to keep course codes and the instructors of that course for a specific term.
         # Instructors are stored in a set to avoid duplicates caused by different section of that class
         classesDict = collections.OrderedDict()
@@ -200,17 +201,24 @@ for deptAbbrPair in depAndAbbr:
         # Fo loop to iterate all courses
         for item in soupObj.findAll('tr', {'class': ['schtd', 'schtd2']}):
             # Name and code of the course,
-            courseCode = item.findAll('td')[0].text.split('.')[0].replace(u'\xa0', u'')
-            courseName = item.findAll('td')[2].text.replace(u'\xa0', u'')
+            try:
+                courseCode = item.findAll('td')[0].text.split('.')[0].replace(u'\xa0', u'').rstrip()
+            except:
+                courseCode = "XXX000"
+            try:
+                courseName = item.findAll('td')[2].text.replace(u'\xa0', u'').rstrip()
+            except:
+                courseName = "XXX"
             # Courses with labs and PSs have extra lines that dont have coursename but instead &nbsp in HTML code.
             # I couldnt properly replace &nbsp character. Instead, I checked if [-3] character exists or not.
             try:
                 courseCode[-3]
             except:
                 continue
-
-            courseInstructor = item.findAll('td')[5].text.replace(u'\xa0', u'')
-
+            try:
+                courseInstructor = item.findAll('td')[5].text.replace(u'\xa0', u'').rstrip()
+            except:
+                courseInstructor = "Undefined"
             # STAFF is not a distinct instructor, this "if" ensures that.
             if 'STAFF' not in courseInstructor:
                 # Add to the set independent of dept and term
@@ -218,7 +226,7 @@ for deptAbbrPair in depAndAbbr:
                 # Add to term and dept specific set
                 uniqueIns.add(courseInstructor)
             # Term and date specific set
-            uniqueClasses.add(courseCode)
+            uniqueClasses.add((str(courseCode),str(courseName)))
 
             # This try-except blocks prevents crashing whem encountered with course codes that has letters instead of numbers.
             # Those codes are counted as undergrad courses
@@ -229,29 +237,29 @@ for deptAbbrPair in depAndAbbr:
                     if (courseCode, courseName) not in deptObjList[index].allCourseSet:
                         # Department-specific, term and course independent
                         deptObjList[index].totalCourseDiv[1] += 1
-                    if courseCode not in classesDict:
+                    if (courseCode,courseName) not in classesDict:
                         # department and term specific, course independent
                         underGrad[1] += 1
                 # If it is not a grad course, then it is an undergrad course.
                 else:
                     # If we have processed another section of that course before, we dont update our statistics.
-                    if courseCode not in classesDict:
+                    if (courseCode,courseName) not in classesDict:
                         underGrad[0] += 1
                     if (courseCode, courseName) not in deptObjList[index].allCourseSet:
                         deptObjList[index].totalCourseDiv[0] += 1
             # If it contains letters instead of number in the course code, then it is an undergrad course
             except:
-                if courseCode not in classesDict:
+                if (courseCode,courseName) not in classesDict:
                     underGrad[0] += 1
                 if (courseCode, courseName) not in deptObjList[index].allCourseSet:
                     deptObjList[index].totalCourseDiv[0] += 1
 
             # Add the course to all course set(department specific, term independent)
-            deptObjList[index].allCourseSet.add((courseCode, courseName))
+            deptObjList[index].allCourseSet.add((str(courseCode), str(courseName)))
             if courseCode in classesDict:
-                classesDict[courseCode].append(courseInstructor)
+                classesDict[(courseCode,courseName)].append(courseInstructor)
             else:
-                classesDict[courseCode] = [courseInstructor]
+                classesDict[(courseCode,courseName)] = [courseInstructor]
         # Term specific stats of distribution of undergrad vs grad courses
         classesDict["courseDiv"] = underGrad
         # How many distinct instructors are there in that semester for that department
@@ -263,32 +271,33 @@ for deptAbbrPair in depAndAbbr:
     # to iterate thorough the department list.
     index += 1
 
-# Writes to stdout in csv format, seperator character is semicolon
-theWriter = csv.writer(sys.stdout, delimiter=";")
-# First write the header
-theWriter.writerow(columns)
+with open('mycsv.csv', 'w') as f:
+    # Writes to stdout in csv format, seperator character is semicolon
+    theWriter = csv.writer(f, delimiter=";",lineterminator='\n')
+    # First write the header
+    theWriter.writerow(columns)
 
-for i in range(len(deptObjList)):
-    # For every department we first write the statistics.
-    theWriter.writerow(deptObjList[i].firstRowInfo())
-    # We sort our course list and write course-specific stats row by row.
-    uniqueCourseList = list(deptObjList[i].allCourseSet)
-    uniqueCourseList.sort()
-    for course in uniqueCourseList:
-        code, name = course
-        row = [" ", code, name]
-        howManyTerms = 0
-        howManyInst = set()
-        for date in dates:
-            # As allCourseSet has all courses for all terms, we should check whether the course was offered in this term.
-            # If it is, we put a "x" and also add the instructors of the course for that term to the more general set- which contains all instructors
-            # that has given that course.
-            if code in deptObjList[i].classesByTerm[date]["uniqueClasses"]:
-                howManyInst = howManyInst.union(set(deptObjList[i].classesByTerm[date][code]))
-                row.append("x")
-                howManyTerms += 1
-            else:
-                row.append(" ")
+    for i in range(len(deptObjList)):
+        # For every department we first write the statistics.
+        theWriter.writerow(deptObjList[i].firstRowInfo())
+        # We sort our course list and write course-specific stats row by row.
+        uniqueCourseList = list(deptObjList[i].allCourseSet)
+        uniqueCourseList.sort()
+        for course in uniqueCourseList:
+            code, name = course
+            row = [" ", code, name]
+            howManyTerms = 0
+            howManyInst = set()
+            for date in dates:
+                # As allCourseSet has all courses for all terms, we should check whether the course was offered in this term.
+                # If it is, we put a "x" and also add the instructors of the course for that term to the more general set- which contains all instructors
+                # that has given that course.
+                if (code,name) in deptObjList[i].classesByTerm[date]["uniqueClasses"]:
+                    howManyInst = howManyInst.union(set(deptObjList[i].classesByTerm[date][(code,name)]))
+                    row.append("x")
+                    howManyTerms += 1
+                else:
+                    row.append(" ")
 
-        row.append(str(howManyTerms) + "/" + str(len(howManyInst)))
-        theWriter.writerow(row)
+            row.append(str(howManyTerms) + "/" + str(len(howManyInst)))
+            theWriter.writerow(row)
